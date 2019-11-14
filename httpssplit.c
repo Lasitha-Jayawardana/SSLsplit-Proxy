@@ -29,8 +29,8 @@
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 
-int clientport = 4433;
-int serverport = 443;
+int clientport = 443;
+int serverport = 46;
 //#define serverport 4433
 //#define clientport 433
 
@@ -93,12 +93,12 @@ void configure_context(SSL_CTX *ctx) {
     SSL_CTX_set_ecdh_auto(ctx, 1);
 
     /* Set the key and cert */
-    if (SSL_CTX_use_certificate_file(ctx, "/home/paraqum/WORK/Lasitha/certificate.pem", SSL_FILETYPE_PEM) <= 0) {
+    if (SSL_CTX_use_certificate_file(ctx, "/etc/symbion/cert.pem", SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
 
-    if (SSL_CTX_use_PrivateKey_file(ctx, "/home/paraqum/WORK/Lasitha/key.pem", SSL_FILETYPE_PEM) <= 0) {
+    if (SSL_CTX_use_PrivateKey_file(ctx, "/etc/symbion/key.pem", SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
       //Server
   int Sbytes;
     char Sbuf[128];
-
+ int bytes_send, len;
 
     int sock;
     SSL_CTX *Sctx;
@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
         struct sockaddr_in Saddr;
         uint len = sizeof (Saddr);
         SSL *Sssl;
-        const char reply[] = "I'm Lasitha from server. \n";
+        const char reply[] = "I'm Lasitha from server. \n" ;
 
         int client = accept(sock, (struct sockaddr*) &Saddr, &len);
         
@@ -145,13 +145,74 @@ int main(int argc, char **argv) {
             exit(EXIT_FAILURE);
         }
 
+    //**************************    
+       											// Bytes Transferred
+        int MAXBYTE=4096;
+										
+	char *buffer = (char*)calloc(MAXBYTE,sizeof(char));
+        
+        bytes_send = recv(client, buffer, MAXBYTE, 0);
+        
+	while(bytes_send > 0)
+	{
+		len = strlen(buffer);
+		if(strstr(buffer, "\r\n\r\n") == NULL)
+		{	
+			
+			bytes_send = recv(client, buffer + len, MAXBYTE - len, 0);
+		}
+		else{
+			break;
+		}
+	}
+        printf("%s\n",buffer);
+      
+        
+        char *buffertemp = (char*)calloc(MAXBYTE,sizeof(char));
+        bcopy(buffer,buffertemp,MAXBYTE);
+
+        
+
+         const char s[4] = " "; 
+    char* tok; 
+  
+ 
+    tok = strtok(buffer, s);
+    printf("%s\n",tok);
+    
+    tok = strtok(0, s);
+    printf("%s\n",tok);
+    
+         const char st[4] = ":"; 
+    char* hostname; 
+    
+  hostname =strtok(tok, st); //"sltctrackme.000webhostapp.com";
+    printf("%s\n",hostname);
+    
+    //pppppppppppppppppppppppppppppppp
+    
+      int by=0;
+            
+   
+            by=send(client , "HTTP/1.1 200 connection established\r\n\r\n" , strlen("HTTP/1.1 200 connection established\r\n\r\n") , 0 );
+		 
+
+		if(by < 0)
+		{
+			perror("Error in sending data to client connection established.\n");
+			break;
+		}
+    
+    //ppppppppppppppppppppppppppppppppp
+    
+      
         Sssl = SSL_new(Sctx);
         SSL_set_fd(Sssl, client);
 
         if (SSL_accept(Sssl) <= 0) {
             ERR_print_errors_fp(stderr);
         } else {
-
+    printf("%s\n","SSL Handshake Complete.........................................................");
             memset(Sbuf, '\0', sizeof (Sbuf));
             Sbytes = SSL_read(Sssl, Sbuf, sizeof (Sbuf));
             while (Sbytes > 0) {
@@ -163,20 +224,55 @@ int main(int argc, char **argv) {
                 if (Sbytes < 128) {
                     write(STDOUT_FILENO, Sbuf, Sbytes);
 
+    //----------------------
+              int sd;
+              //char hostname[] = "www.example.com";
+	struct hostent *host;
+	struct sockaddr_in Caddr;
+        host = gethostbyname(hostname);
+	sd = socket(AF_INET, SOCK_STREAM, 0);
+	memset(&Caddr, 0, sizeof(Caddr));
+	Caddr.sin_family = AF_INET;
+	Caddr.sin_port = htons(clientport);
+	Caddr.sin_addr.s_addr = *(long*)(host->h_addr);
+
+	if ( connect(sd, (struct sockaddr*)&Caddr, sizeof(Caddr)) == -1 ) {
+		//BIO_printf(outbio, "%s: Cannot connect to host %s [%s] on port %d.\n", argv[0], hostname, inet_ntoa(Caddr.sin_addr), clientport);
+	  printf("%s\n","sdegsefgeswfefefefe");
+        }
+        
+        
+        int bytes_send = send(sd, buffertemp, strlen(buffertemp), 0);
+        bzero(buffertemp, MAXBYTE);
+        bytes_send = recv(sd, buffertemp, MAXBYTE-1, 0);
+        
+        while(bytes_send > 0)
+	{
+            printf("%s\n",buffertemp);
+            
+    
+            break;
+	} 
+    //-------------------
+    
+    
+      //************************** 
+        
+        
+        
+      
                      
                     
                     //Client staring......................
              
-                    int sd;
-	struct hostent *host;
-	struct sockaddr_in Caddr;
+          
 	BIO *outbio = NULL;
 	SSL_METHOD *method;
 	SSL_CTX *Cctx;
 	SSL *Cssl;
 	char *req;
 	int req_len;
-	char hostname[] = "www.example.com";
+	
 	//char certs[] = "/etc/ssl/certs/ca-certificates.crt";
 
 	int Cbytes;
