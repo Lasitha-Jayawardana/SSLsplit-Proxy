@@ -29,14 +29,14 @@
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 
-int clientport = 443;
-int serverport = 46;
-//#define serverport 4433
-//#define clientport 433
+//int clientport = 443;
+//int serverport = 46;
+#define serverport 46
+#define clientport 443
 
-
-//Server Side Functions
-
+#define MAXBYTE 14096
+//#define NULL __null
+ 
 int create_socket(int port) {
     int s;
     struct sockaddr_in addr;
@@ -104,16 +104,60 @@ void configure_context(SSL_CTX *ctx) {
     }
 }
 
+
+void remove_Rstrline(char *str,char *Rstr){
+  
+    
+    
+   
+   	 
+ //strcpy(tmp,str);
+   char *tmp = (char*)calloc(strlen (str),sizeof(char));
+        bcopy(str,tmp,strlen (str));
+          printf("%s\n",str);	  
+          printf("%s\n",tmp);	 
+	  char* token; 
+  
+
+  
+      memset(str, '\0', sizeof (str));
+  
+    while ((token = strtok_r(tmp, "\r\n", &tmp))) { 
+     
+     if ( !strstr(token,Rstr))
+     {
+	 
+ 
+       strncat(str,token,strlen(token));
+        strncat(str,"\r\n",strlen("\r\n"));
+      
+     } 
+        
+    }
+  
+  strncat(str,"\r\n",strlen("\r\n"));
+    printf("%s\n",str);	
+}
+
 int main(int argc, char **argv) {
+       
+    
+    
+    
+    
+    
+    
+    
       //Server
   int Sbytes;
-    char Sbuf[128];
+   char Sbuf[MAXBYTE];
+   // char *Sbuf = (char*)calloc(MAXBYTE,sizeof(char));
  int bytes_send, len;
 
     int sock;
     SSL_CTX *Sctx;
 
-
+   // char data[MAXBYTE];
 
 
 
@@ -128,26 +172,26 @@ int main(int argc, char **argv) {
     while (1) {
 
 
-        char data[10000];
+        
          
         //Server
         struct sockaddr_in Saddr;
         uint len = sizeof (Saddr);
         SSL *Sssl;
-        const char reply[] = "I'm Lasitha from server. \n" ;
+        //const char reply[] = "I'm Lasitha from server. \n" ;
 
         int client = accept(sock, (struct sockaddr*) &Saddr, &len);
         
         //
 
         if (client < 0) {
-            perror("Unable to accept");
+            perror("Unable to accept Client");
             exit(EXIT_FAILURE);
         }
 
     //**************************    
-       											// Bytes Transferred
-        int MAXBYTE=4096;
+       											 
+        
 										
 	char *buffer = (char*)calloc(MAXBYTE,sizeof(char));
         
@@ -165,8 +209,9 @@ int main(int argc, char **argv) {
 			break;
 		}
 	}
+         printf("%s\n","Client Request ..................................\n");
         printf("%s\n",buffer);
-      
+        printf("%s","..................................................\n\n");
         
         char *buffertemp = (char*)calloc(MAXBYTE,sizeof(char));
         bcopy(buffer,buffertemp,MAXBYTE);
@@ -178,30 +223,39 @@ int main(int argc, char **argv) {
   
  
     tok = strtok(buffer, s);
-    printf("%s\n",tok);
+    //printf("%s\n",tok);
     
     tok = strtok(0, s);
-    printf("%s\n",tok);
+   // printf("%s\n",tok);
     
          const char st[4] = ":"; 
     char* hostname; 
-    
+   
   hostname =strtok(tok, st); //"sltctrackme.000webhostapp.com";
-    printf("%s\n",hostname);
+    printf("Host Name :  %s\n\n",hostname);
     
+    
+    
+    
+    if (strstr(hostname,"google")){
+        
+   
     //pppppppppppppppppppppppppppppppp
-    
-      int by=0;
+    const char reply[]= "HTTP/1.1 200 connection established\r\n\r\n";
+      int bytes=0;
             
    
-            by=send(client , "HTTP/1.1 200 connection established\r\n\r\n" , strlen("HTTP/1.1 200 connection established\r\n\r\n") , 0 );
+            bytes=send(client ,reply  , strlen(reply) , 0 );
 		 
 
-		if(by < 0)
+		if(bytes < 0)
 		{
-			perror("Error in sending data to client connection established.\n");
-			break;
-		}
+			perror("Error in sending 'connection established ' reply to client .\n");
+			 
+		}else{
+                    perror("Success in sending 'connection established ' reply to client .\n");
+			
+                }
     
     //ppppppppppppppppppppppppppppppppp
     
@@ -212,66 +266,65 @@ int main(int argc, char **argv) {
         if (SSL_accept(Sssl) <= 0) {
             ERR_print_errors_fp(stderr);
         } else {
-    printf("%s\n","SSL Handshake Complete.........................................................");
-            memset(Sbuf, '\0', sizeof (Sbuf));
+            
+    printf("%s\n\n","SSL Handshake Complete.........................................................\n\n");
+        char *data = (char*)calloc(sizeof (Sbuf),sizeof(char));      
+            
+    memset(Sbuf, '\0', sizeof (Sbuf));
+     memset(data, '\0', sizeof (data));
+     printf("%s\n\n","Client Request.........................................................\n\n");
+      
             Sbytes = SSL_read(Sssl, Sbuf, sizeof (Sbuf));
             while (Sbytes > 0) {
-                write(STDOUT_FILENO, Sbuf, Sbytes);
+                //write(STDOUT_FILENO, Sbuf, Sbytes);
                  
-                strcat(data,Sbuf);
+                //strcat(data,Sbuf);
+               
+                 bcopy(Sbuf,data,strlen (Sbuf));
+                
+                if(strstr(Sbuf, "\r\n\r\n") != NULL)
+                {
+                    //write(STDOUT_FILENO, Sbuf, Sbytes);
+ 
+                    break;
+                } 
+                
                 memset(Sbuf, '\0', sizeof (Sbuf));
                 Sbytes = SSL_read(Sssl, Sbuf, sizeof (Sbuf));
-                if (Sbytes < 128) {
-                    write(STDOUT_FILENO, Sbuf, Sbytes);
+                
 
-    //----------------------
+
+            }
+            printf("%s\n\n",data);
+      
+      printf("%s","..................................................\n\n");
+        
+       //11111111111111111111
+      char* token; 
+      char *rest = (char*)calloc(strlen (data),sizeof(char));
+        bcopy(data,rest,strlen (data));
+	 
+     
+strtok_r(rest, "\n", &rest);
+	 token = strtok_r(rest, "\n", &rest) ;
+  strtok_r(token, " ", &token);
+  token= strtok_r(token, " ", &token);
+  
+  printf("Host Name :  %s\n\n",token);
+    
+		 
+      //111111111111111111111
+               printf("%s\n\n",data);
+      //Client starting----------------------
               int sd;
-              //char hostname[] = "www.example.com";
+             // char hostname[] = "example.com";
 	struct hostent *host;
 	struct sockaddr_in Caddr;
-        host = gethostbyname(hostname);
-	sd = socket(AF_INET, SOCK_STREAM, 0);
-	memset(&Caddr, 0, sizeof(Caddr));
-	Caddr.sin_family = AF_INET;
-	Caddr.sin_port = htons(clientport);
-	Caddr.sin_addr.s_addr = *(long*)(host->h_addr);
-
-	if ( connect(sd, (struct sockaddr*)&Caddr, sizeof(Caddr)) == -1 ) {
-		//BIO_printf(outbio, "%s: Cannot connect to host %s [%s] on port %d.\n", argv[0], hostname, inet_ntoa(Caddr.sin_addr), clientport);
-	  printf("%s\n","sdegsefgeswfefefefe");
-        }
-        
-        
-        int bytes_send = send(sd, buffertemp, strlen(buffertemp), 0);
-        bzero(buffertemp, MAXBYTE);
-        bytes_send = recv(sd, buffertemp, MAXBYTE-1, 0);
-        
-        while(bytes_send > 0)
-	{
-            printf("%s\n",buffertemp);
-            
-    
-            break;
-	} 
-    //-------------------
-    
-    
-      //************************** 
-        
-        
-        
-      
-                     
-                    
-                    //Client staring......................
-             
-          
-	BIO *outbio = NULL;
+        BIO *outbio = NULL;
 	SSL_METHOD *method;
 	SSL_CTX *Cctx;
 	SSL *Cssl;
-	char *req;
-	int req_len;
+	
 	
 	//char certs[] = "/etc/ssl/certs/ca-certificates.crt";
 
@@ -286,20 +339,18 @@ int main(int argc, char **argv) {
 	outbio	= BIO_new(BIO_s_file());
 	outbio	= BIO_new_fp(stdout, BIO_NOCLOSE);
 
-        
-        
-        
-        
-        
-	if(SSL_library_init() < 0){
+        if(SSL_library_init() < 0){
 		BIO_printf(outbio, "Could not initialize the OpenSSL library !\n");
 	}
 
 	method = SSLv23_client_method();
 	Cctx = SSL_CTX_new(method);
 	SSL_CTX_set_options(Cctx, SSL_OP_NO_SSLv2);
-
-	host = gethostbyname(hostname);
+        
+        
+                 printf("%s\n\n",data);
+        
+        host = gethostbyname(hostname);
 	sd = socket(AF_INET, SOCK_STREAM, 0);
 	memset(&Caddr, 0, sizeof(Caddr));
 	Caddr.sin_family = AF_INET;
@@ -308,23 +359,71 @@ int main(int argc, char **argv) {
 
 	if ( connect(sd, (struct sockaddr*)&Caddr, sizeof(Caddr)) == -1 ) {
 		BIO_printf(outbio, "%s: Cannot connect to host %s [%s] on port %d.\n", argv[0], hostname, inet_ntoa(Caddr.sin_addr), clientport);
-	}
-
+	  //printf("%s\n","%s: Cannot connect to host %s [%s] on port %d.\n", argv[0], token, inet_ntoa(Caddr.sin_addr), clientport);
+        }
+        
+                 printf("%s\n\n",data);
+        
+       /*int bytes_send = send(sd, buffertemp, strlen(buffertemp), 0);
+        bzero(buffertemp, MAXBYTE);
+        bytes_send = recv(sd, buffertemp, MAXBYTE-1, 0);
+        
+        while(bytes_send > 0)
+	{
+            printf("%s\n",buffertemp);
+            
+    
+            break;
+	} */
+    
+    
 	Cssl = SSL_new(Cctx); 
 	SSL_set_fd(Cssl, sd);
 	SSL_connect(Cssl);
 
-	req = "GET / HTTP/1.1\r\nHost: www.example.com\r\n\r\n";	
-	
+	int req_len;
+	 
         
-       // char inputString[4096];
+        
+       //char str[10000];
+      /* memset(str, '\0', sizeof (str));
+       printf("Enter a multi line string( press 'tab' to end input)\n");
+    
+       scanf("%[^\t]s", str);
+   strncat(str,"\r\n\r\n",strlen("\r\n\r\n"));*/
+       //  char str[]="GET / HTTP/1.1\r\nAccept: text/html, application/xhtml+xml, image/jxr, */*\r\nAccept-Language: en-US\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko\r\nHost: www.google.com\r\nConnection: Keep-Alive\r\n\r\n";	
+	 
+ char *rstr="Accept-Encoding";
+
+ // char str[]="GET / HTTP/1.1\r\nAccept: text/html, application/xhtml+xml, image/jxr, */*\r\nAccept-Language: en-US\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko\r\nHost: www.google.com\r\nConnection: Keep-Alive\r\nAccept-Encoding: gzip, deflate\r\n\r\n";	
+	 
   
-  // printf("Enter a multi line string( press ';' to end input)\n");
-   //scanf("%[^\t]s", inputString);
+
+ 
+ remove_Rstrline(data, rstr); 
+ printf("%s\n", data); 
+ /*char *rstr2="Cookie";
+ remove_Rstrline(data, rstr2); 
+ printf("%s\n", data); 
+ */
+ //memset(data, '\0', sizeof(data));
+ 
+ char *req;   
+ //printf("%d\n", strcmp(data,str));
+ //data=str;
+
+ //req = "GET / HTTP/1.1\r\nHost: google.com\r\nConnection: keep-alive\r\nCache-Control: max-age=0\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Mobile Safari/537.36\r\nSec-Fetch-User: ?1\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3\r\nSec-Fetch-Site: cross-site\r\nSec-Fetch-Mode: navigate\r\nAccept-Language: en-US,en;q=0.9\r\n\r\n";	
+	
+       // req = data;
+        
+    /*    char inputString[4096];
   
+       printf("Enter a multi line string( press 'tab' to end input)\n");
+   scanf("%[^\t]s", inputString);
+  req = inputString;*/
          
-        req_len = strlen(req);
-	SSL_write(Cssl, req, req_len);
+        req_len = strlen(data);
+	SSL_write(Cssl, data, req_len);
         char Cdata[100000];
        //int i=0;
 	memset(Cbuf, '\0', sizeof(Cbuf));
@@ -338,7 +437,7 @@ int main(int argc, char **argv) {
 	while(Cbytes > 0){
 		//write(STDOUT_FILENO, Cbuf, Cbytes);
                
-                strncat(Cdata,Cbuf,Cbytes);
+     //          strncat(Cdata,Cbuf,Cbytes);
                  //write(STDOUT_FILENO, Cdata,  strlen(Cdata));
                   //printf("%s",".................\n"); 
                   //printf("%s",Cbuf);
@@ -357,7 +456,15 @@ int main(int argc, char **argv) {
               // r=SSL_peek(Cssl, Cbuf, strlen(Cbuf));
               //SSL_CTX_set_read_ahead(Cctx,0);
                // printf("%i",r);
-               SSL_write(Sssl, Cbuf, strlen(Cbuf));
+              SSL_write(Sssl, Cbuf, strlen(Cbuf));
+               write(STDOUT_FILENO, Cbuf, Cbytes);
+               
+                if((strstr(Cbuf, "</html>") != NULL) || (strstr(Cbuf, "</HTML>") != NULL))
+                {
+                    //write(STDOUT_FILENO, Sbuf, Sbytes);
+ 
+                    break;
+                } 
                memset(Cbuf, '\0', sizeof(Cbuf)); 
 		Cbytes = SSL_read(Cssl, Cbuf, sizeof(Cbuf)); 
                // i = i +Cbytes;
@@ -383,37 +490,29 @@ int main(int argc, char **argv) {
 
    //printf( "Enter a value :");
        //scanf("%[^\t]s", str);
- strncat(Cdata,Cbuf,Cbytes);
+ //strncat(Cdata,Cbuf,Cbytes);
         //write(STDOUT_FILENO, str,  strlen(str));
        // SSL_write(Sssl, str, strlen(str));
         //printf("%s",".................\n");
               //   printf("%i",i);
                //  printf("%s",".................\n");
-        write(STDOUT_FILENO, Cdata,  strlen(Cdata));
-        
+        //write(STDOUT_FILENO, Cdata,  strlen(Cdata));
+      printf( "End@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");   
         //SSL_write(Sssl, Cdata, strlen(Cdata));
 	SSL_free(Cssl);
 	close(sd);
 	SSL_CTX_free(Cctx);
                 
         //Client closed.......            
-            
-        
-         
-        
-                    break;
-                }
-
-
-            }
            
-
+      
+      
         }
 
         SSL_free(Sssl);
         close(client);
 
-
+ }
 
 
 
