@@ -101,7 +101,8 @@ void configure_context(SSL_CTX *ctx) {
     if (SSL_CTX_use_PrivateKey_file(ctx, "/etc/symbion/key.pem", SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
-    }
+    } 
+     
 }
 
 
@@ -141,13 +142,7 @@ void remove_Rstrline(char *str,char *Rstr){
 
 int main(int argc, char **argv) {
        
-    
-    
-    
-    
-    
-    
-    
+
       //Server
   int Sbytes;
    char Sbuf[MAXBYTE];
@@ -237,7 +232,7 @@ int main(int argc, char **argv) {
     
     
     
-    if (strstr(hostname,"google")){
+    if (strstr(hostname,"w.google.c") || strstr(hostname,"w.example.c")){
         
    
     //pppppppppppppppppppppppppppppppp
@@ -314,7 +309,7 @@ strtok_r(rest, "\n", &rest);
     
 		 
       //111111111111111111111
-               printf("%s\n\n",data);
+              
       //Client starting----------------------
               int sd;
              // char hostname[] = "example.com";
@@ -348,7 +343,7 @@ strtok_r(rest, "\n", &rest);
 	SSL_CTX_set_options(Cctx, SSL_OP_NO_SSLv2);
         
         
-                 printf("%s\n\n",data);
+                 
         
         host = gethostbyname(hostname);
 	sd = socket(AF_INET, SOCK_STREAM, 0);
@@ -362,7 +357,7 @@ strtok_r(rest, "\n", &rest);
 	  //printf("%s\n","%s: Cannot connect to host %s [%s] on port %d.\n", argv[0], token, inet_ntoa(Caddr.sin_addr), clientport);
         }
         
-                 printf("%s\n\n",data);
+                
         
        /*int bytes_send = send(sd, buffertemp, strlen(buffertemp), 0);
         bzero(buffertemp, MAXBYTE);
@@ -393,22 +388,27 @@ strtok_r(rest, "\n", &rest);
    strncat(str,"\r\n\r\n",strlen("\r\n\r\n"));*/
        //  char str[]="GET / HTTP/1.1\r\nAccept: text/html, application/xhtml+xml, image/jxr, */*\r\nAccept-Language: en-US\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko\r\nHost: www.google.com\r\nConnection: Keep-Alive\r\n\r\n";	
 	 
- char *rstr="Accept-Encoding";
+
 
  // char str[]="GET / HTTP/1.1\r\nAccept: text/html, application/xhtml+xml, image/jxr, */*\r\nAccept-Language: en-US\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko\r\nHost: www.google.com\r\nConnection: Keep-Alive\r\nAccept-Encoding: gzip, deflate\r\n\r\n";	
 	 
   
-
- 
+//**without removing accept encoding part, some times server gives encoded response. But signal error was come.
+  char *rstr="Accept-Encoding";
  remove_Rstrline(data, rstr); 
  printf("%s\n", data); 
+ //**///////////////////////////////////////////////
+ 
+ 
+ 
+ 
  /*char *rstr2="Cookie";
  remove_Rstrline(data, rstr2); 
  printf("%s\n", data); 
  */
  //memset(data, '\0', sizeof(data));
  
- char *req;   
+ //char *req;   
  //printf("%d\n", strcmp(data,str));
  //data=str;
 
