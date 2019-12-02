@@ -31,7 +31,7 @@
 
 //int clientport = 443;
 //int serverport = 46;
-#define serverport 46
+#define serverport 443
 #define clientport 443
 
 #define MAXBYTE 14096
@@ -232,7 +232,7 @@ int main(int argc, char **argv) {
     
     
     
-    if (strstr(hostname,"w.google.c") || strstr(hostname,"w.example.c")){
+    if (strstr(hostname,"w.google.c") || strstr(hostname,"example.c")){
         
    
     //pppppppppppppppppppppppppppppppp
