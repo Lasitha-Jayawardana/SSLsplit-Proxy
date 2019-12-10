@@ -1,4 +1,4 @@
-
+#include "Parse_buf.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -29,40 +29,11 @@
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 
-//int clientport = 443;
-//int serverport = 46;
+
 #define serverport 443
 #define clientport 443
-
-#define MAXBYTE 14096
-//#define NULL __null
- 
-int create_socket(int port) {
-    int s;
-    struct sockaddr_in addr;
-
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    s = socket(AF_INET, SOCK_STREAM, 0);
-    if (s < 0) {
-        perror("Unable to create socket");
-        exit(EXIT_FAILURE);
-    }
-
-    if (bind(s, (struct sockaddr*) &addr, sizeof (addr)) < 0) {
-        perror("Unable to bind");
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(s, 1) < 0) {
-        perror("Unable to listen");
-        exit(EXIT_FAILURE);
-    }
-
-    return s;
-}
+#define serverQlen 20
+#define MAXBYTE 16000
 
 void init_openssl() {
     SSL_load_error_strings();
@@ -73,7 +44,7 @@ void cleanup_openssl() {
     EVP_cleanup();
 }
 
-SSL_CTX *create_context() {
+SSL_CTX *create_Scontext() {
     const SSL_METHOD *method;
     SSL_CTX *ctx;
 
@@ -89,7 +60,7 @@ SSL_CTX *create_context() {
     return ctx;
 }
 
-void configure_context(SSL_CTX *ctx) {
+void configure_Scontext(SSL_CTX *ctx) {
     SSL_CTX_set_ecdh_auto(ctx, 1);
 
     /* Set the key and cert */
@@ -101,439 +72,496 @@ void configure_context(SSL_CTX *ctx) {
     if (SSL_CTX_use_PrivateKey_file(ctx, "/etc/symbion/key.pem", SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
-    } 
-     
+    }
+
 }
 
+void remove_Rstrline(char *str, char *Rstr) {
 
-void remove_Rstrline(char *str,char *Rstr){
-  
-    
-    
-   
-   	 
- //strcpy(tmp,str);
-   char *tmp = (char*)calloc(strlen (str),sizeof(char));
-        bcopy(str,tmp,strlen (str));
-          printf("%s\n",str);	  
-          printf("%s\n",tmp);	 
-	  char* token; 
-  
 
-  
-      memset(str, '\0', sizeof (str));
-  
-    while ((token = strtok_r(tmp, "\r\n", &tmp))) { 
-     
-     if ( !strstr(token,Rstr))
-     {
-	 
- 
-       strncat(str,token,strlen(token));
-        strncat(str,"\r\n",strlen("\r\n"));
-      
-     } 
-        
+
+
+
+
+    char *tmp = (char*) calloc(strlen(str), sizeof (char));
+    bcopy(str, tmp, strlen(str));
+
+    char* token;
+
+
+
+    memset(str, '\0', sizeof (str));
+
+    while ((token = strtok_r(tmp, "\r\n", &tmp))) {
+
+        if (!strstr(token, Rstr)) {
+
+
+            strncat(str, token, strlen(token));
+            strncat(str, "\r\n", strlen("\r\n"));
+
+        }
+
     }
-  
-  strncat(str,"\r\n",strlen("\r\n"));
-    printf("%s\n",str);	
+
+    strncat(str, "\r\n", strlen("\r\n"));
+
+}
+
+int create_Ssocket() {
+
+    int s;
+    struct sockaddr_in addr;
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(serverport);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0) {
+        perror("Unable to create socket");
+        exit(EXIT_FAILURE);
+    }
+
+    if (bind(s, (struct sockaddr*) &addr, sizeof (addr)) < 0) {
+        perror("Unable to bind");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(s, serverQlen) < 0) {
+        perror("Unable to listen");
+        exit(EXIT_FAILURE);
+    }
+
+    return s;
+}
+
+void RecvfromClient(char *buffer, int client) {
+    int bytes;
+    bytes = recv(client, buffer, MAXBYTE, 0);
+
+    while (bytes > 0) {
+        int len = strlen(buffer);
+        if (strstr(buffer, "\r\n\r\n") == NULL) {
+
+            bytes = recv(client, buffer + len, MAXBYTE - len, 0);
+        } else {
+            break;
+        }
+    }
+}
+
+struct ProxyHeader {
+    char *method;
+    char *protocol;
+    char *host;
+    char *url;
+    char *port;
+};
+
+struct ProxyHeader* CreateProxyHeader() {
+    struct ProxyHeader *pr;
+    pr = (struct ProxyHeader *) malloc(sizeof (struct ProxyHeader));
+    if (pr != NULL) {
+
+
+        pr->method = NULL;
+        pr->protocol = NULL;
+        pr->host = NULL;
+        pr->port = NULL;
+        pr->url = NULL;
+
+    }
+    return pr;
+}
+
+int SetProxyHeader(struct ProxyHeader *proxyheader, char *buffer) {
+
+    char *index;
+    char *saveptr;
+    char *tmp_buf = (char *) malloc(strlen(buffer) + 1); /* including NUL */
+    memcpy(tmp_buf, buffer, strlen(buffer));
+    tmp_buf[strlen(buffer)] = '\0';
+
+    index = strstr(tmp_buf, "\r\n\r\n");
+    if (index == NULL) {
+        debug("invalid Proxy request , no end of header\n");
+        free(tmp_buf);
+        return 0;
+    }
+
+    proxyheader->method = strtok_r(tmp_buf, " ", &saveptr);
+
+    if (strstr(proxyheader->method, "GET")) {
+        proxyheader->url = strtok_r(NULL, " ", &saveptr);
+        proxyheader->protocol = strtok_r(NULL, "\r\n", &saveptr);
+        char *line;
+        while ((line = strtok_r(saveptr, "\r\n", &saveptr))) {
+            if (strstr(line, "Host:")) {
+                strtok_r(NULL, " ", &line);
+                proxyheader->host = line;
+
+            }
+        }
+    } else if (strstr(proxyheader->method, "CONNECT")) {
+        proxyheader->host = strtok_r(NULL, ":", &saveptr);
+        proxyheader->port = strtok_r(NULL, " ", &saveptr);
+        proxyheader->protocol = strtok_r(NULL, "\r\n", &saveptr);
+    } else {
+        return 0;
+    }
+    return 1;
+
+
+
+}
+
+int SendtoClient(char *buf, int client) {
+
+    return send(client, buf, strlen(buf), 0);
+}
+
+void DestroyProxyHeader(struct ProxyHeader * pr) {
+
+
+    free(pr);
+
+}
+
+int ReadfromClient(SSL *Sssl, char *buf) {
+    int b = 0;
+    int bytes = SSL_read(Sssl, buf, 512);
+    if (bytes > 0) {
+        b = 1;
+    }
+    while (bytes > 0) {
+
+        int len = strlen(buf);
+
+        if (strstr(buf, "\r\n\r\n") != NULL) {
+
+
+            break;
+        }
+
+
+        bytes = SSL_read(Sssl, buf + len, MAXBYTE - len);
+
+
+
+    }
+    return b;
+}
+
+int CreateCsocket(struct hostent *host) {
+    int sd;
+    struct sockaddr_in Caddr;
+    sd = socket(AF_INET, SOCK_STREAM, 0);
+    memset(&Caddr, 0, sizeof (Caddr));
+    Caddr.sin_family = AF_INET;
+    Caddr.sin_port = htons(clientport);
+    Caddr.sin_addr.s_addr = *(long*) (host ->h_addr);
+
+    if (connect(sd, (struct sockaddr*) &Caddr, sizeof (Caddr)) == -1) {
+        printf("Cannot connect to Server");
+    }
+    return sd;
+}
+
+struct SSL *ConfigureCcontext(int sd) {
+    SSL *Cssl;
+    BIO *outbio = NULL;
+    SSL_METHOD *method;
+    SSL_CTX *Cctx;
+
+    OpenSSL_add_all_algorithms();
+    ERR_load_BIO_strings();
+    ERR_load_crypto_strings();
+    SSL_load_error_strings();
+
+    outbio = BIO_new(BIO_s_file());
+    outbio = BIO_new_fp(stdout, BIO_NOCLOSE);
+
+    if (SSL_library_init() < 0) {
+        BIO_printf(outbio, "Could not initialize the OpenSSL library !\n");
+    }
+
+    method = SSLv23_client_method();
+    Cctx = SSL_CTX_new(method);
+    SSL_CTX_set_options(Cctx, SSL_OP_NO_SSLv2);
+
+    Cssl = SSL_new(Cctx);
+    SSL_set_fd(Cssl, sd);
+    SSL_connect(Cssl);
+    SSL_CTX_free(Cctx);
+    return Cssl;
+}
+
+char *getHeaderValue(char *header, char *buf) {
+
+    char *tmp = (char*) calloc(strlen(buf), sizeof (char));
+    bcopy(buf, tmp, strlen(buf));
+
+    char* line;
+
+    while ((line = strtok_r(tmp, "\r\n", &tmp))) {
+        if (strstr(line, header)) {
+            strtok_r(NULL, " ", &line);
+
+            return line;
+
+        }
+
+    }
+    return NULL;
+}
+
+int SkipHeaderLen(SSL *ssl, char *buf) {
+
+
+    int bytes = SSL_read(ssl, buf, 16000);
+
+    while (bytes > 0) {
+
+        char* point;
+        if (point = strstr(buf, "\r\n\r\n")) {
+
+            return bytes;
+
+        }
+
+        bytes = SSL_read(ssl, buf, 16000);
+
+    }
+    return 0;
 }
 
 int main(int argc, char **argv) {
-       
 
-      //Server
-  int Sbytes;
-   char Sbuf[MAXBYTE];
-   // char *Sbuf = (char*)calloc(MAXBYTE,sizeof(char));
- int bytes_send, len;
-
-    int sock;
+    int serversock;
     SSL_CTX *Sctx;
 
-   // char data[MAXBYTE];
-
-
-
     init_openssl();
-    Sctx = create_context();
+    Sctx = create_Scontext();
+    configure_Scontext(Sctx);
+    serversock = create_Ssocket();
 
-    configure_context(Sctx);
-
-    sock = create_socket(serverport);
- 
     //Handle connections 
     while (1) {
 
-
-        
-         
-        //Server
         struct sockaddr_in Saddr;
         uint len = sizeof (Saddr);
         SSL *Sssl;
-        //const char reply[] = "I'm Lasitha from server. \n" ;
 
-        int client = accept(sock, (struct sockaddr*) &Saddr, &len);
-        
-        //
+
+        int client = accept(serversock, (struct sockaddr*) &Saddr, &len);
 
         if (client < 0) {
             perror("Unable to accept Client");
-            exit(EXIT_FAILURE);
+            close(client);
+            goto exitserverloop;
+        }
+        printf("################################## Client Started #################################\n\n");
+
+        char *buffer = (char*) calloc(MAXBYTE, sizeof (char));
+
+        //  printf("%s\n", "Client Request ..................................\n");
+        RecvfromClient(buffer, client);
+        //printf("%s\n", buffer);
+        // printf("%s", "..................................................\n\n");
+
+        struct ProxyHeader *proxyheader = CreateProxyHeader();
+        if (!SetProxyHeader(proxyheader, buffer)) {
+            DestroyProxyHeader(proxyheader);
+            goto exitserverloop;
         }
 
-    //**************************    
-       											 
-        
-										
-	char *buffer = (char*)calloc(MAXBYTE,sizeof(char));
-        
-        bytes_send = recv(client, buffer, MAXBYTE, 0);
-        
-	while(bytes_send > 0)
-	{
-		len = strlen(buffer);
-		if(strstr(buffer, "\r\n\r\n") == NULL)
-		{	
-			
-			bytes_send = recv(client, buffer + len, MAXBYTE - len, 0);
-		}
-		else{
-			break;
-		}
-	}
-         printf("%s\n","Client Request ..................................\n");
-        printf("%s\n",buffer);
-        printf("%s","..................................................\n\n");
-        
-        char *buffertemp = (char*)calloc(MAXBYTE,sizeof(char));
-        bcopy(buffer,buffertemp,MAXBYTE);
+        printf("Host Name :  %s\n\n", proxyheader->host);
+        printf("URL :  %s\n\n", proxyheader->url);
 
-        
+        // if (strstr(proxyheader->host,"w.go")){
 
-         const char s[4] = " "; 
-    char* tok; 
-  
- 
-    tok = strtok(buffer, s);
-    //printf("%s\n",tok);
-    
-    tok = strtok(0, s);
-   // printf("%s\n",tok);
-    
-         const char st[4] = ":"; 
-    char* hostname; 
-   
-  hostname =strtok(tok, st); //"sltctrackme.000webhostapp.com";
-    printf("Host Name :  %s\n\n",hostname);
-    
-    
-    
-    
-    if (strstr(hostname,"w.google.c") || strstr(hostname,"example.c")){
-        
-   
-    //pppppppppppppppppppppppppppppppp
-    const char reply[]= "HTTP/1.1 200 connection established\r\n\r\n";
-      int bytes=0;
-            
-   
-            bytes=send(client ,reply  , strlen(reply) , 0 );
-		 
+        char *reply = proxyheader->protocol;
+        strcat(reply, " 200 connection established\r\n\r\n");
 
-		if(bytes < 0)
-		{
-			perror("Error in sending 'connection established ' reply to client .\n");
-			 
-		}else{
-                    perror("Success in sending 'connection established ' reply to client .\n");
-			
-                }
-    
-    //ppppppppppppppppppppppppppppppppp
-    
-      
-        Sssl = SSL_new(Sctx);
-        SSL_set_fd(Sssl, client);
 
-        if (SSL_accept(Sssl) <= 0) {
-            ERR_print_errors_fp(stderr);
+        if (SendtoClient(reply, client) <= 0) {
+            printf("Error in sending 'connection established ' reply to client .\n");
+            DestroyProxyHeader(proxyheader);
+            goto exitserverloop;
         } else {
-            
-    printf("%s\n\n","SSL Handshake Complete.........................................................\n\n");
-        char *data = (char*)calloc(sizeof (Sbuf),sizeof(char));      
-            
-    memset(Sbuf, '\0', sizeof (Sbuf));
-     memset(data, '\0', sizeof (data));
-     printf("%s\n\n","Client Request.........................................................\n\n");
-      
-            Sbytes = SSL_read(Sssl, Sbuf, sizeof (Sbuf));
-            while (Sbytes > 0) {
-                //write(STDOUT_FILENO, Sbuf, Sbytes);
-                 
-                //strcat(data,Sbuf);
-               
-                 bcopy(Sbuf,data,strlen (Sbuf));
-                
-                if(strstr(Sbuf, "\r\n\r\n") != NULL)
-                {
-                    //write(STDOUT_FILENO, Sbuf, Sbytes);
- 
-                    break;
-                } 
-                
-                memset(Sbuf, '\0', sizeof (Sbuf));
-                Sbytes = SSL_read(Sssl, Sbuf, sizeof (Sbuf));
-                
+            //  printf("Success in sending 'connection established ' reply to client .\n");
+
+        }
+
+        if (strstr(proxyheader->method, "GET")) {
 
 
+        } else if (strstr(proxyheader->method, "CONNECT")) {
+
+            Sssl = SSL_new(Sctx);
+            SSL_set_fd(Sssl, client);
+
+            if (SSL_accept(Sssl) <= 0) {
+                ERR_print_errors_fp(stderr);
+                printf("Error ssl handshake.\n");
+            } else {
+
+                printf("%s\n\n", "SSL Handshake Complete.........................................................\n\n");
+                memset(buffer, '\0', sizeof (buffer));
+
+                if (ReadfromClient(Sssl, buffer)) {
+                    printf("%s\n\n", "Client Request.........................................................\n\n");
+
+                      printf("%s\n\n", buffer);
+                     printf("%s", "..................................................\n\n");
+
+                    struct hostent *host = gethostbyname(proxyheader->host);
+
+                    if (host->h_length > 0) {
+                        printf("%s\n\n", "DNS Success .........................................................\n\n");
+
+
+                        int clientsock = CreateCsocket(host);
+                        if (clientsock) {
+
+
+                            SSL *Cssl = ConfigureCcontext(clientsock);
+
+                            //**without removing accept encoding part, some times server gives encoded response. But signal error was come.
+                            /* char *rstr;
+                             rstr = "Accept-Encoding";
+                             remove_Rstrline(buffer, rstr);
+                             rstr = "Transfer-Encoding";
+                             remove_Rstrline(buffer, rstr);
+                            /* printf("%s\n", buffer);
+                             */
+                            int len;
+                            int Cbytes;
+                            char Cbuf[MAXBYTE];
+
+                            len = strlen(buffer);
+
+                            if (SSL_write(Cssl, buffer, len)) {
+                                int totalcont = 0;
+                                int contlen = 0;
+                                memset(buffer, '\0', sizeof (buffer));
+
+                                Cbytes = SSL_read(Cssl, Cbuf, 5182);
+                                printf("Server Responded ..................%d......................\n\n", Cbytes);
+                                if (Cbytes > 0) {
+
+
+                                    int headlen = 0;
+
+
+                                    //Cbytes= SkipHeaderLen(Cssl,buffer); 
+
+                                    char* value = getHeaderValue("Content-Length", Cbuf);
+
+                                    if (value) {
+                                        contlen = atoi(value);
+
+                                        // number of bytes actually read
+                                        // number of bytes received
+                                        int i, line_length;
+
+                                        // body assign = '\0'
+
+                                        /***********Try to read byte by byte***********/
+
+                                        i = 0;
+                                        line_length = 0; // to check length of each line
+                                        while (i <= Cbytes) {
+                                            // read 1 byte to c[0]
+                                            // read fall or connection closed
+                                            if (Cbuf[i] == '\n') { // if '\n'
+                                                if (line_length == 0) {
+                                                    i++;
+                                                    break;
+                                                }// empty line, so end header
+                                                else line_length = 0; // else reset for new line
+                                            } else if (Cbuf[i] != '\r') line_length++; // inc length
+                                            i++; // add to header
+                                            // count
+                                        }
+
+                                        write(STDOUT_FILENO, Cbuf, i);
+
+
+                                        totalcont = -i;
+
+
+                                        printf("\n$$$$$$$$$$$$$ header length : %d $$$$$$$$$$$$$\n\n", i);
+                                    }
+
+                                    char *trnsfcoding = getHeaderValue("Tranfer-Coding", Cbuf);
+
+
+                                    while (Cbytes > 0) {
+
+                                        printf("In the Forwarding Loop ........................................\n\n");
+
+
+                                        //write(STDOUT_FILENO, Cbuf, Cbytes);
+                                        if (SSL_write(Sssl, Cbuf, Cbytes)) {
+
+                                            totalcont += Cbytes;
+                                            if (contlen) {
+
+                                                if (contlen <= totalcont) {
+                                                    break;
+                                                    // write(STDOUT_FILENO, Cbuf, Cbytes);
+                                                }
+
+
+
+                                            } else if (trnsfcoding == NULL || trnsfcoding != "chunked") {
+
+
+                                                if (strstr(Cbuf, "0\r\n\r\n") != NULL) {
+
+                                                    break;
+                                                }
+                                            }
+                                            memset(Cbuf, '\0', sizeof (Cbuf));
+                                            Cbytes = 0;
+                                            Cbytes = SSL_read(Cssl, Cbuf, 4096);
+
+                                        }
+                                    }
+
+                                }
+                                printf("$$$$$$$$$$$$$ ContLen %d $$$$$$$$$$$$$\n\n", contlen);
+                                printf("$$$$$$$$$$$$$ ReceivedCont %d $$$$$$$$$$$$$\n\n", totalcont);
+                                printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ Connection Complete @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n");
+
+
+                            }
+
+                            close(clientsock);
+                            SSL_free(Cssl);
+                        }
+                    }
+                }
             }
-            printf("%s\n\n",data);
-      
-      printf("%s","..................................................\n\n");
-        
-       //11111111111111111111
-      char* token; 
-      char *rest = (char*)calloc(strlen (data),sizeof(char));
-        bcopy(data,rest,strlen (data));
-	 
-     
-strtok_r(rest, "\n", &rest);
-	 token = strtok_r(rest, "\n", &rest) ;
-  strtok_r(token, " ", &token);
-  token= strtok_r(token, " ", &token);
-  
-  printf("Host Name :  %s\n\n",token);
-    
-		 
-      //111111111111111111111
-              
-      //Client starting----------------------
-              int sd;
-             // char hostname[] = "example.com";
-	struct hostent *host;
-	struct sockaddr_in Caddr;
-        BIO *outbio = NULL;
-	SSL_METHOD *method;
-	SSL_CTX *Cctx;
-	SSL *Cssl;
-	
-	
-	//char certs[] = "/etc/ssl/certs/ca-certificates.crt";
-
-	int Cbytes;
-	char Cbuf[4096];
-
-	OpenSSL_add_all_algorithms();
-	ERR_load_BIO_strings();
-	ERR_load_crypto_strings();
-	SSL_load_error_strings();
-
-	outbio	= BIO_new(BIO_s_file());
-	outbio	= BIO_new_fp(stdout, BIO_NOCLOSE);
-
-        if(SSL_library_init() < 0){
-		BIO_printf(outbio, "Could not initialize the OpenSSL library !\n");
-	}
-
-	method = SSLv23_client_method();
-	Cctx = SSL_CTX_new(method);
-	SSL_CTX_set_options(Cctx, SSL_OP_NO_SSLv2);
-        
-        
-                 
-        
-        host = gethostbyname(hostname);
-	sd = socket(AF_INET, SOCK_STREAM, 0);
-	memset(&Caddr, 0, sizeof(Caddr));
-	Caddr.sin_family = AF_INET;
-	Caddr.sin_port = htons(clientport);
-	Caddr.sin_addr.s_addr = *(long*)(host->h_addr);
-
-	if ( connect(sd, (struct sockaddr*)&Caddr, sizeof(Caddr)) == -1 ) {
-		BIO_printf(outbio, "%s: Cannot connect to host %s [%s] on port %d.\n", argv[0], hostname, inet_ntoa(Caddr.sin_addr), clientport);
-	  //printf("%s\n","%s: Cannot connect to host %s [%s] on port %d.\n", argv[0], token, inet_ntoa(Caddr.sin_addr), clientport);
-        }
-        
-                
-        
-       /*int bytes_send = send(sd, buffertemp, strlen(buffertemp), 0);
-        bzero(buffertemp, MAXBYTE);
-        bytes_send = recv(sd, buffertemp, MAXBYTE-1, 0);
-        
-        while(bytes_send > 0)
-	{
-            printf("%s\n",buffertemp);
-            
-    
-            break;
-	} */
-    
-    
-	Cssl = SSL_new(Cctx); 
-	SSL_set_fd(Cssl, sd);
-	SSL_connect(Cssl);
-
-	int req_len;
-	 
-        
-        
-       //char str[10000];
-      /* memset(str, '\0', sizeof (str));
-       printf("Enter a multi line string( press 'tab' to end input)\n");
-    
-       scanf("%[^\t]s", str);
-   strncat(str,"\r\n\r\n",strlen("\r\n\r\n"));*/
-       //  char str[]="GET / HTTP/1.1\r\nAccept: text/html, application/xhtml+xml, image/jxr, */*\r\nAccept-Language: en-US\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko\r\nHost: www.google.com\r\nConnection: Keep-Alive\r\n\r\n";	
-	 
-
-
- // char str[]="GET / HTTP/1.1\r\nAccept: text/html, application/xhtml+xml, image/jxr, */*\r\nAccept-Language: en-US\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko\r\nHost: www.google.com\r\nConnection: Keep-Alive\r\nAccept-Encoding: gzip, deflate\r\n\r\n";	
-	 
-  
-//**without removing accept encoding part, some times server gives encoded response. But signal error was come.
-  char *rstr="Accept-Encoding";
- remove_Rstrline(data, rstr); 
- printf("%s\n", data); 
- //**///////////////////////////////////////////////
- 
- 
- 
- 
- /*char *rstr2="Cookie";
- remove_Rstrline(data, rstr2); 
- printf("%s\n", data); 
- */
- //memset(data, '\0', sizeof(data));
- 
- //char *req;   
- //printf("%d\n", strcmp(data,str));
- //data=str;
-
- //req = "GET / HTTP/1.1\r\nHost: google.com\r\nConnection: keep-alive\r\nCache-Control: max-age=0\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Mobile Safari/537.36\r\nSec-Fetch-User: ?1\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3\r\nSec-Fetch-Site: cross-site\r\nSec-Fetch-Mode: navigate\r\nAccept-Language: en-US,en;q=0.9\r\n\r\n";	
-	
-       // req = data;
-        
-    /*    char inputString[4096];
-  
-       printf("Enter a multi line string( press 'tab' to end input)\n");
-   scanf("%[^\t]s", inputString);
-  req = inputString;*/
-         
-        req_len = strlen(data);
-	SSL_write(Cssl, data, req_len);
-        char Cdata[100000];
-       //int i=0;
-	memset(Cbuf, '\0', sizeof(Cbuf));
-        memset(Cdata, '\0', sizeof(Cdata));
-	Cbytes = SSL_read(Cssl, Cbuf, sizeof(Cbuf));
-        //Cbytes=BIO_read(outbio, Cbuf, sizeof(Cbuf));
-         // fd_set read_fd_set;
-           //FD_ZERO(&read_fd_set);
-                //FD_SET(sd, &read_fd_set);
-        //i = i +Cbytes;
-	while(Cbytes > 0){
-		//write(STDOUT_FILENO, Cbuf, Cbytes);
-               
-     //          strncat(Cdata,Cbuf,Cbytes);
-                 //write(STDOUT_FILENO, Cdata,  strlen(Cdata));
-                  //printf("%s",".................\n"); 
-                  //printf("%s",Cbuf);
-                //SSL_write(Sssl, Cbuf, strlen(Cbuf));
-               
-               //int sock_fd;
-               int r;
-               
-                 Cbuf[Cbytes]=0;
-                
-               //Cbytes=BIO_read(outbio, Cbuf, sizeof(Cbuf));
-               //SSL_get_error(Cssl,r);
-               
-               //r=select(2,&read_fd_set,NULL,NULL,NULL);
-               //r= SSL_pending(Cssl);
-              // r=SSL_peek(Cssl, Cbuf, strlen(Cbuf));
-              //SSL_CTX_set_read_ahead(Cctx,0);
-               // printf("%i",r);
-              SSL_write(Sssl, Cbuf, strlen(Cbuf));
-               write(STDOUT_FILENO, Cbuf, Cbytes);
-               
-                if((strstr(Cbuf, "</html>") != NULL) || (strstr(Cbuf, "</HTML>") != NULL))
-                {
-                    //write(STDOUT_FILENO, Sbuf, Sbytes);
- 
-                    break;
-                } 
-               memset(Cbuf, '\0', sizeof(Cbuf)); 
-		Cbytes = SSL_read(Cssl, Cbuf, sizeof(Cbuf)); 
-               // i = i +Cbytes;
-               /* if (Cbytes<1024 ){
-               
-                    i=i+1;
-                  //write(STDOUT_FILENO, Cbuf, Cbytes);
-                   
-                   if (i>10){
-                      
-                      //strcat(Cdata,Cbuf); 
-                     // memset(Cdata, '\0', sizeof(Cdata)); 
-               memset(Cbuf, '\0', sizeof(Cbuf)); 
-                  
-                   break;
-                   }
-  
-                }*/ 
-               
-	}
-         //char str[100000];
-    
-
-   //printf( "Enter a value :");
-       //scanf("%[^\t]s", str);
- //strncat(Cdata,Cbuf,Cbytes);
-        //write(STDOUT_FILENO, str,  strlen(str));
-       // SSL_write(Sssl, str, strlen(str));
-        //printf("%s",".................\n");
-              //   printf("%i",i);
-               //  printf("%s",".................\n");
-        //write(STDOUT_FILENO, Cdata,  strlen(Cdata));
-      printf( "End@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");   
-        //SSL_write(Sssl, Cdata, strlen(Cdata));
-	SSL_free(Cssl);
-	close(sd);
-	SSL_CTX_free(Cctx);
-                
-        //Client closed.......            
-           
-      
-      
+            SSL_free(Sssl);
         }
 
-        SSL_free(Sssl);
+
+
+
         close(client);
 
- }
+exitserverloop:
 
-
-
-
- 
-
+        printf("################################## Client Closed #################################\n\n");
 
     }
 
-    close(sock);
+    close(serversock);
     SSL_CTX_free(Sctx);
     cleanup_openssl();
 
-
-
- 
- 
 }
 
-
-
-//Client Side Functions
-
- 
