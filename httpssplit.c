@@ -1,3 +1,4 @@
+
 #include "Parse_buf.h"
 #include <stdio.h>
 #include <unistd.h>
@@ -411,20 +412,20 @@ int main(int argc, char **argv) {
                 memset(buffer, '\0', sizeof (buffer));
 
                 if (ReadfromClient(Sssl, buffer)) {
-                    printf("%s\n\n", "Client Request.........................................................\n\n");
+                    //printf("%s\n\n", "Client Request.........................................................\n\n");
 
-                      printf("%s\n\n", buffer);
-                     printf("%s", "..................................................\n\n");
+                     // printf("%s\n\n", buffer);
+                    // printf("%s", "..................................................\n\n");
 
                     struct hostent *host = gethostbyname(proxyheader->host);
 
                     if (host->h_length > 0) {
                         printf("%s\n\n", "DNS Success .........................................................\n\n");
 
-
+printf("pending to socket 0000000000000000000000");
                         int clientsock = CreateCsocket(host);
                         if (clientsock) {
-
+printf("socket success 0000000000000000000000");
 
                             SSL *Cssl = ConfigureCcontext(clientsock);
 
@@ -441,8 +442,10 @@ int main(int argc, char **argv) {
                             char Cbuf[MAXBYTE];
 
                             len = strlen(buffer);
-
+   printf("pending to write 0000000000000000000000");
+                              
                             if (SSL_write(Cssl, buffer, len)) {
+                                printf("write complete  0000000000000000000000");
                                 int totalcont = 0;
                                 int contlen = 0;
                                 memset(buffer, '\0', sizeof (buffer));
@@ -564,4 +567,3 @@ exitserverloop:
     cleanup_openssl();
 
 }
-
